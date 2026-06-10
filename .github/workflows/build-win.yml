@@ -1,0 +1,60 @@
+name: Build Windows trial
+
+# Builds the limited TRIAL Windows installer (5-minute cap) on a Windows runner
+# via scripts/build_trial.py (PyInstaller + Inno Setup) and publishes it to this
+# repo's "win" release. Static win ffmpeg/ffprobe come from npm. The site links
+# here so the download matches the Boosty trial/full model.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build-win:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Node (for static ffmpeg binaries)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Fetch static win ffmpeg + ffprobe
+        shell: pwsh
+        run: |
+          npm i ffmpeg-static ffprobe-static
+          New-Item -ItemType Directory -Force bin | Out-Null
+          Copy-Item (node -e "process.stdout.write(require('ffmpeg-static'))") bin/ffmpeg.exe
+          Copy-Item (node -e "process.stdout.write(require('ffprobe-static').path)") bin/ffprobe.exe
+          & bin/ffmpeg.exe -version | Select-Object -First 1
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build trial installer
+        run: python scripts/build_trial.py
+
+      - name: Publish to "win" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: win
+          name: Windows trial build
+          body: 'Windows trial installer (videos up to 5 min — full version on Boosty).'
+          files: installer/VideoCompressor-Trial-Setup.exe
+          fail_on_unmatched_files: true
