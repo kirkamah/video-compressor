@@ -51,8 +51,13 @@ jobs:
       - name: Make app icon (.icns)
         run: sips -s format icns brand/logo.png --out assets/app.icns
 
-      - name: Build .app
-        run: pyinstaller --noconfirm build-mac.spec
+      - name: Build .app (TRIAL)
+        run: |
+          set -euo pipefail
+          # Bake the trial flag (5-min limit) like scripts/build_trial.py does.
+          sed -i '' 's/^TRIAL = False$/TRIAL = True/' src/vcompress/trial.py
+          grep -n '^TRIAL = ' src/vcompress/trial.py
+          pyinstaller --noconfirm build-mac.spec
 
       - name: Ad-hoc sign + zip
         run: |
