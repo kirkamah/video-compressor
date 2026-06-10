@@ -12,7 +12,15 @@ permissions:
 
 jobs:
   mac:
-    runs-on: macos-14 # Apple Silicon
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14 # Apple Silicon
+            arch: arm64
+          - runner: macos-13 # Intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -43,9 +51,9 @@ jobs:
           APP="dist/Video Compressor.app"
           find "$APP" -type f \( -name ffmpeg -o -name ffprobe \) -exec chmod +x {} \;
           codesign --force --deep --sign - "$APP"
-          ditto -c -k --sequesterRsrc --keepParent "$APP" VideoCompressor-mac-arm64.zip
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "VideoCompressor-mac-${{ matrix.arch }}.zip"
       - uses: actions/upload-artifact@v4
         with:
-          name: video-compressor-mac
-          path: VideoCompressor-mac-arm64.zip
+          name: video-compressor-mac-${{ matrix.arch }}
+          path: VideoCompressor-mac-${{ matrix.arch }}.zip
           if-no-files-found: error
