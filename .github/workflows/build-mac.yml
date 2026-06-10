@@ -1,0 +1,75 @@
+name: Build macOS app
+
+# Builds an UNSIGNED macOS .app of Video Compressor (Apple Silicon / arm64) on a
+# cloud macOS runner and publishes the .zip to this repo's "mac" release.
+# - ffmpeg/ffprobe: static mac binaries from the ffmpeg-static / ffprobe-static
+#   npm packages (no dylib dependencies, safe to bundle).
+# - The .app is ad-hoc signed (no Apple Developer cert); the recipient clears
+#   Gatekeeper once via right-click → Open.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build-mac:
+    runs-on: macos-14 # Apple Silicon
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Node (for static ffmpeg binaries)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Fetch static mac ffmpeg + ffprobe
+        run: |
+          set -euo pipefail
+          npm i ffmpeg-static ffprobe-static
+          mkdir -p bin
+          cp "$(node -e "process.stdout.write(require('ffmpeg-static'))")" bin/ffmpeg
+          cp "$(node -e "process.stdout.write(require('ffprobe-static').path)")" bin/ffprobe
+          chmod +x bin/ffmpeg bin/ffprobe
+          file bin/ffmpeg bin/ffprobe
+          bin/ffmpeg -version | head -n1
+
+      - name: Make app icon (.icns)
+        run: sips -s format icns brand/logo.png --out assets/app.icns
+
+      - name: Build .app
+        run: pyinstaller --noconfirm build-mac.spec
+
+      - name: Ad-hoc sign + zip
+        run: |
+          set -euo pipefail
+          APP="dist/Video Compressor.app"
+          # Engines bundled as data may lose their exec bit — restore it.
+          find "$APP" -type f \( -name ffmpeg -o -name ffprobe \) -exec chmod +x {} \;
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --deep --strict "$APP" || true
+          ditto -c -k --sequesterRsrc --keepParent "$APP" VideoCompressor-mac-arm64.zip
+          ls -lh VideoCompressor-mac-arm64.zip
+
+      - name: Publish to "mac" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: mac
+          name: macOS build
+          body: 'Unsigned macOS build (Apple Silicon). First launch — right-click the app, then Open.'
+          files: VideoCompressor-mac-arm64.zip
+          fail_on_unmatched_files: true

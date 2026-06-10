@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+dist/
+dist-trial/
+build/
+installer/
+bin/
+sample/
+assets/app.icns
+*.spec.bak
+.DS_Store
